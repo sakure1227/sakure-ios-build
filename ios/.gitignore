@@ -1,0 +1,19 @@
+App/build
+App/Pods
+App/output
+App/App/public
+DerivedData
+xcuserdata
+
+# Cordova plugins for Capacitor
+capacitor-cordova-ios-plugins
+
+# Generated Config files
+App/App/capacitor.config.json
+App/App/config.xml
+
+# 这个文件虽然平时是 `cap sync` 生成的，但 iOS 云端构建要用到它 ——
+# 里面有我们注册的 11 个原生插件类名（packageClassList）。
+# `cap sync ios` 会重写它，但构建流程里我们**不重新 sync iOS**，
+# 所以必须入库。
+!App/App/capacitor.config.json

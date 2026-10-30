@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- 手机版是横屏的：宽度按设备走，高度不缩放（免得歌词那些布局被压扁）。
+         允许缩放（双指）：歌词与封面在小屏上要看清 —— 禁掉缩放就没法看了。
+         上限放到 5 倍（Android 自己的默认是 5）。 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover, user-scalable=yes" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="theme-color" content="#09090b" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Sakure</title>
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <link rel="apple-touch-icon" href="/icon.png" />
+    <style>
+      /* 首屏遮罩：应用挂载前是一块深色（与应用的底色一样），不让白屏闪一下。 */
+      /*
+        `overflow: hidden` 是为了不让应用整体滚动（横屏布局，滚了就错位）。
+        但**双指放大之后要能拖动**（看放大的歌词那一块）—— 隐藏 overflow 就拖不动了。
+        所以：`auto` 让它可以滚（正常状态下内容与视口一样高，不会滚），
+        `overscroll-behavior: none` 不让它把滚动传给外层（不会连带把页面拖出界）。
+      */
+      html, body {
+        margin: 0; padding: 0; background: #09090b; height: 100%;
+        overflow: auto; overscroll-behavior: none;
+        touch-action: pan-x pan-y pinch-zoom;
+      }
+      #root { height: 100%; }
+      #app-boot {
+        position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+        background: #09090b; color: #71717a; font: 14px/1.6 system-ui, sans-serif;
+        transition: opacity .3s ease; pointer-events: none;
+      }
+      #app-boot.is-gone { opacity: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="app-boot">Sakure</div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,47 @@
+{
+	"appId": "top.izuna.sakure",
+	"appName": "Sakure",
+	"webDir": "dist-mobile",
+	"android": {
+		"backgroundColor": "#09090b",
+		"allowMixedContent": false
+	},
+	"ios": {
+		"backgroundColor": "#09090b",
+		"contentInset": "never",
+		"allowMixedContent": false,
+		"keyboardResize": "body"
+	},
+	"plugins": {
+		"SplashScreen": {
+			"launchShowDuration": 1200,
+			"backgroundColor": "#09090b",
+			"showSpinner": false
+		},
+		"Keyboard": {
+			"resize": "body",
+			"resizeOnFullScreen": true
+		},
+		"StatusBar": {
+			"overlaysWebView": true,
+			"style": "DARK",
+			"backgroundColor": "#09090b"
+		}
+	},
+	"server": {
+		"androidScheme": "https"
+	},
+	"packageClassList": [
+		"AppPlugin",
+		"CAPBrowserPlugin",
+		"ClipboardPlugin",
+		"CsCrypto",
+		"CsHttp",
+		"CsMediaSession",
+		"FilesystemPlugin",
+		"KeyboardPlugin",
+		"PreferencesPlugin",
+		"SplashScreenPlugin",
+		"StatusBarPlugin"
+	]
+}

@@ -1,0 +1,122 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+.vercel
+.env*.local
+
+dev-dist/
+example/
+release/
+packaging/aur/folia-major-bin/FIRST_RELEASE.md
+packaging/aur/folia-major-bin/README.md
+.codex
+.codex-tmp
+.wrangler/tmp
+wrangler.local.toml
+
+test/test-song/*
+test/test-ReplayGain
+impl.md
+test-results/
+.dev-credentials/
+.codex-remote-attachments
+test/manual/lyric-output/*
+test/manual/lyric-audit-output/*    
+deploy/docker/.env
+deploy/docker/data/
+.agents/
+skills-lock.json
+TODO.MD
+commit.md
+.codebuff-ai/reasson/conf.jsonc
+scripts/*
+docs/TODO.md
+design/
+plan/
+
+# Model weights: fetched and hash-verified by build/fetchModels.mjs, shipped in the installer,
+# never committed - 83MB that never changes does not belong in every clone's history.
+models/
+build/windowtolayer
+build/windowtolayer-COPYING
+build/ffmpeg/
+build/koffi/
+build/mac-helper/
+# MNN runtime library (build/buildMnnRuntime.mjs): the pinned source, its build tree, and the result.
+build/mnn/
+build/.mnn-src/
+build/.mnn-build/
+# The transcode fallback's dev slot: same binary as build/ffmpeg/<os>-<arch>, staged here so
+# `npm run dev:electron` runs the audio-only runtime the release ships instead of system PATH.
+# `ffmpeg-8.1.2/` is the mod exporters' slot and is a full build the developer supplies.
+ffmpeg-audio/
+ffmpeg-8.1.2/
+.windowtolayer-src/
+# Local reference clone of upstream main used for pollution review; never ship.
+original/
+# Local upstream implementation references used during investigation; never ship.
+reference/
+# Optional developer override for FFmpeg; packaged builds fetch their pinned runtime.
+# Local hand-made zip bundles of mods (drag-drop install test files); never ship.
+mods/*.zip
+
+
+# Built by packaging/windows/build-wallpaper-helper.mjs (Windows wallpaper mode helper).
+build/sakure-wallpaper-helper.exe
+packaging/windows/wallpaper-helper/target/
+
+# Local Rust Spout sender build artifacts.
+build/folia-spout-sender.exe
+packaging/windows/spout-sender/target/
+
+# Python bytecode from the htdemucs runner, written beside it by the downloaded runtime.
+__pycache__/
+
+# Built by build/buildPythonRuntime.mjs - binary artifacts that live on the mirrors, not in git.
+dist-runtime/
+
+# ── 本地调试用的临时目录（绝不能入库）─────────────────────────────
+# .ssh/ 里是给 GitHub 用的 SSH 私钥
+.ssh/
+# 浏览器自动化用的 profile（里面有登录态 cookie）
+.gh-profile/
+.edge-profile/
+.edge-debug/
+.gh-out/
+# CDP 浏览器的配置目录
+.cdp-browser/
+
+# ── 构建产物（不入库）────────────────────────────────────────────
+# iOS 云端构建用的源码包 —— 由 scripts/ios/make-ios-source-bundle.mjs 生成
+dist-ios-bundle/
+# 手机版渲染层的构建输出
+dist-mobile/
+
+# ── iOS 云端构建必需，不能忽略 ────────────────────────────────────
+# `scripts/*` 那条规则会把整个 scripts/ 排掉，但 iOS 构建要靠
+# scripts/ios/ 下的三个脚本（同步原生插件、校验工程、打包）。
+# 漏放行的话，GitHub Actions 那步直接「找不到文件」。
+!scripts/ios/
+!scripts/ios/**

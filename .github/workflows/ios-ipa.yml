@@ -1,0 +1,284 @@
+name: Build iOS IPA
+
+# iOS 的 IPA 只能在 macOS 上编（Xcode 只在 macOS 上有）。
+#
+# 这个工作流就是**没有 Mac 也能出包**的路：GitHub 的 macOS runner 自带 Xcode。
+# 产物是一个**未签名**的 IPA —— 拿爱思助手（或任何签名工具）签一下就能装到手机上。
+#
+# 触发方式：
+# - 手动：在 Actions 页面点「Run workflow」；
+# - 或给 `main` 推一个带 `ios-ipa` 标签的提交。
+on:
+  workflow_dispatch:
+  push:
+    tags: ['ios-ipa-*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ipa-${{ github.ref }}
+  # **不要** cancel-in-progress。
+  #
+  # macOS runner 是共享资源，供应紧张时排队十几分钟是常事。如果新派发的把
+  # 还在排队的旧 run 取消掉，就变成「永远排不上」—— 取消 → 重派 → 又取消。
+  # 让它们一起排队，谁先跑完用谁。
+  cancel-in-progress: false
+
+jobs:
+  build-ipa:
+    name: Build unsigned IPA (${{ matrix.os }})
+    # 两个 runner 标签**并行**跑，谁先分配到就用谁。
+    #
+    # ⚠️ **不要用 macos-14** —— GitHub 已公告它退役（2026-11-02 完全下线，
+    # 10 月起就有 brownout）。退役中的 runner 池会空掉，job 无限排队 ——
+    # 实测卡了 12 分钟都没分配上。
+    #
+    # 现役的 arm64 标签是 `macos-15` 与 `macos-latest`（latest 现指向 macos-26）。
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Select Xcode
+        run: |
+          # ★ 不要切换 Xcode ★
+          #
+          # 踩过的坑：
+          # - 写死 `Xcode_15.4.app` → runner 上没这个版本，报「找不到 Xcode」；
+          # - 改成「挑一个 /Applications/Xcode*.app 里存在的」→ 挑到了 Xcode_16，
+          #   而它需要的 **iOS 18.0 SDK 没装**，于是报：
+          #     Unable to find a destination matching the provided destination specifier
+          #     error: iOS 18.0 is not installed
+          #
+          # runner 的**默认 Xcode 一定是跟已装 SDK 配好的**（runner 镜像就是按它配的），
+          # 所以最稳的做法是**什么都不切**，只把版本打印出来。
+          echo "=== 用 runner 默认的 Xcode ==="
+          xcodebuild -version
+          swift --version
+          echo "=== 可用的 iOS SDK ==="
+          xcodebuild -showsdks 2>/dev/null | grep -iE "ios" | head -10
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the mobile renderer
+        run: node mobile/build-mobile.mjs
+
+      - name: Sync into the iOS project
+        run: npx cap sync ios
+
+      - name: Sync our own native plugins
+        # 这一步 `cap sync` **不会**做，必须自己来。
+        #
+        # 漏了它编译照样成功，但运行时三个原生插件全都「not implemented」——
+        # 音乐搜索发不出请求、登录存不住凭据、锁屏面板没有内容。
+        # 而且这种错装到手机上才暴露，编译日志里一点痕迹都没有。
+        run: node scripts/ios/sync-ios-plugins.mjs
+
+      - name: Verify the Xcode project
+        run: node scripts/ios/check-xcode-project.mjs
+
+      - name: Resolve Swift Package dependencies
+        # Capacitor 8 的 iOS 工程用 **SPM**（不是 CocoaPods）。
+        #
+        # 依赖要先解析一次 —— `xcodebuild` 在非交互模式下不会自己去拉
+        # `capacitor-swift-pm` 那个远端包，SPM 没解析好就直接编译会报
+        # 「No such module 'Capacitor'」或者一堆缺符号。
+        # ★ `-derivedDataPath` **必须和编译那步完全一致**。
+        #
+        # 这两条命令用的是不同的 DerivedData 时，SPM 会在编译时**重新解析一遍**
+        # 依赖 —— 解析结果不共享，就会出现「同一构建里混进两个 Capacitor 版本」
+        # （官方插件各自是独立 package，`from: "8.0.0"` 会解析到当时的最新 8.x，
+        #  而 CapApp-SPM 锁的是 exact 版本）。编译插件时链接到新版本的二进制，
+        # 于是报「类型可见但成员不可见」。
+        run: |
+          xcodebuild \
+            -resolvePackageDependencies \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -derivedDataPath ios/build/DerivedData
+
+      - name: Diagnose the Capacitor module
+        # 编译失败时用来定位「编译器到底看到了哪个 Capacitor」。
+        #
+        # 背景：官方插件编译时报 `value of type 'any CAPBridgeProtocol' has no
+        # member 'webView'` —— 类型可见、成员不可见，说明**编译时链接的
+        # Capacitor 二进制跟源码不是同一份**。
+        #
+        # 这个步骤把实际情况打出来：SPM 解析到的版本、xcframework 的落盘位置、
+        # 以及那个二进制里的 .swiftinterface / ObjC 头里到底有没有那些成员。
+        run: |
+          # **不要用 pipefail** —— 下面一堆 `grep -c`，找不到就返回 1，
+          # 那会让整个步骤提前退出（第一次跑就是这样，什么都没打印就挂了）。
+          set -u
+          DD=ios/build/DerivedData
+          echo "=== SPM 解析到的包 ==="
+          for f in $(find "$DD" "$HOME/Library/Caches/org.swift.swiftpm" -name "Package.resolved" 2>/dev/null | head -4); do
+            echo "--- $f ---"
+            grep -A4 "capacitor-swift-pm" "$f" 2>/dev/null || echo "(没匹配到 capacitor-swift-pm)"
+          done
+          echo
+          echo "=== SPM 的 checkout 目录（那里的 Package.swift 写着 exact 版本）==="
+          for f in $(find "$DD/SourcePackages/checkouts" -maxdepth 3 -name "Package.swift" 2>/dev/null | head -3); do
+            echo "--- $f ---"
+            grep -nE "exact:|from:|url:" "$f" 2>/dev/null | head -8
+          done
+          echo
+          echo "=== xcframework 落盘位置 ==="
+          find "$DD/SourcePackages/artifacts" -name "*.xcframework" -maxdepth 4 2>/dev/null | head -5
+          echo
+          echo "=== Capacitor.framework 的内容 ==="
+          FW=$(find "$DD/SourcePackages/artifacts" -type d -name "Capacitor.framework" 2>/dev/null | head -1)
+          echo "framework: ${FW:-（没找到）}"
+          if [ -n "$FW" ]; then
+            echo "--- Headers ---"
+            ls "$FW/Headers" 2>/dev/null
+            echo "--- Modules ---"
+            find "$FW/Modules" -type f 2>/dev/null | head -8
+            IF=$(find "$FW/Modules" -name "*.swiftinterface" 2>/dev/null | head -1)
+            echo "interface: ${IF:-（没有 .swiftinterface！）}"
+            if [ -n "$IF" ]; then
+              echo "  webView:  $(grep -c 'var webView' "$IF" 2>/dev/null || echo 0)"
+              echo "  reject:   $(grep -c 'func reject' "$IF" 2>/dev/null || echo 0)"
+              echo "  getInt:   $(grep -c 'func getInt' "$IF" 2>/dev/null || echo 0)"
+            fi
+            echo "  Capacitor-Swift.h 里的 webView: $(grep -c 'webView' "$FW/Headers/Capacitor-Swift.h" 2>/dev/null || echo 0)"
+          fi
+          echo
+          echo "=== 编译器真正用的 framework（ProcessXCFramework 抽取出来的）==="
+          # 编译命令的 -F 指向 Build/Products/Release-iphoneos ——
+          # 那份是 ProcessXCFramework 从 xcframework 里抽出来的，是编译器的真实输入。
+          RF="$DD/Build/Products/Release-iphoneos/Capacitor.framework"
+          echo "路径: ${RF:-（没有）}"
+          if [ -d "$RF" ]; then
+            echo "--- Headers ---"
+            ls "$RF/Headers" 2>/dev/null
+            echo "--- swiftmodule 目录 ---"
+            ls "$RF/Modules/Capacitor.swiftmodule" 2>/dev/null
+            for cand in "$RF"/Modules/Capacitor.swiftmodule/*.swiftinterface; do
+              [ -f "$cand" ] || continue
+              echo "  [$(basename "$cand")]"
+              echo "    var webView: $(grep -c 'var webView' "$cand" 2>/dev/null || echo 0)"
+              echo "    func reject:  $(grep -c 'func reject' "$cand" 2>/dev/null || echo 0)"
+              echo "    func getInt:  $(grep -c 'func getInt' "$cand" 2>/dev/null || echo 0)"
+              echo "    CAPBridgeProtocol: $(grep -c 'protocol CAPBridgeProtocol' "$cand" 2>/dev/null || echo 0)"
+            done
+            echo "--- ObjC 头 ---"
+            echo "  Capacitor-Swift.h webView: $(grep -c 'webView' "$RF/Headers/Capacitor-Swift.h" 2>/dev/null || echo 0)"
+            echo "  CAPPluginCall.h reject:     $(grep -c 'reject' "$RF/Headers/CAPPluginCall.h" 2>/dev/null || echo 0)"
+          fi
+          echo
+          echo "=== 插件与 App 的依赖约束 ==="
+          grep -n "capacitor-swift-pm" node_modules/@capacitor/status-bar/Package.swift 2>/dev/null | head -3
+          grep -n "capacitor-swift-pm" ios/App/CapApp-SPM/Package.swift 2>/dev/null | head -3
+          echo "诊断结束。"
+
+
+
+      - name: Strip the binary Swift module
+        # ★ 关键的一步 ★
+        #
+        # `capacitor-swift-pm` 的 core 是 binaryTarget（预编译的 Capacitor.xcframework）。
+        # 编译器读 Swift API 时**优先用 `.swiftmodule`**（二进制的 API 快照），
+        # 只有找不到二进制时才会退回读 `.swiftinterface`（文本接口）。
+        #
+        # 那份二进制快照与官方插件期望的版本对不上，于是报：
+        #
+        #     value of type 'any CAPBridgeProtocol' has no member 'webView'
+        #     value of type 'CAPPluginCall' has no member 'reject'
+        #
+        # —— 类型可见（两版都有这个类型），成员不可见（新版改了 API）。
+        # 实测 30 个错误，全在 8 个官方插件里，我们自己的代码零错误。
+        #
+        # 把 `.swiftmodule` 二进制删掉，编译器就只能用 `.swiftinterface` ——
+        # 那是完整的文本接口，成员一定可见。
+        #
+        # 删的是 xcframework **里**那份（ProcessXCFramework 抽取时的来源），
+        # 抽出来的 `Release-iphoneos/Capacitor.framework` 也就没有二进制快照了。
+        run: |
+          set -u
+          XCF=ios/build/DerivedData/SourcePackages/artifacts/capacitor-swift-pm/Capacitor/Capacitor.xcframework
+          echo "=== 删掉 .swiftmodule 二进制（保留 .swiftinterface）==="
+          FOUND=0
+          for f in $(find "$XCF" -name "*.swiftmodule" -type f 2>/dev/null); do
+            echo "  删: $f"
+            rm -f "$f"
+            FOUND=$((FOUND + 1))
+          done
+          echo "删了 $FOUND 个 .swiftmodule"
+          echo
+          echo "=== 剩下的接口文件 ==="
+          find "$XCF" -name "*.swiftinterface" 2>/dev/null | head -6
+          echo
+          for cand in $(find "$XCF" -name "*.swiftinterface" -not -name "*private*" 2>/dev/null | head -2); do
+            echo "--- $(basename "$cand") ---"
+            echo "  var webView: $(grep -c 'var webView' "$cand" 2>/dev/null || echo 0)"
+            echo "  func reject:  $(grep -c 'func reject' "$cand" 2>/dev/null || echo 0)"
+            echo "  func getInt:  $(grep -c 'func getInt' "$cand" 2>/dev/null || echo 0)"
+          done
+
+      - name: Compile the app
+        # ★ 用 `-project` 而不是 `-workspace`：Capacitor 8 生成的是 `.xcodeproj`
+        # （SPM 工程），**没有** `.xcworkspace` —— 那是 CocoaPods 工程才有的。
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath ios/build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY= \
+            ENABLE_BITCODE=NO \
+            build
+
+      - name: Package the unsigned IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="ios/build/DerivedData/Build/Products/Release-iphoneos/App.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "编译产物不在预期位置: $APP_PATH"
+            exit 1
+          fi
+          rm -rf ios/build/Payload
+          mkdir -p ios/build/Payload
+          cp -R "$APP_PATH" ios/build/Payload/
+          cd ios/build
+          rm -f Sakure.ipa
+          zip -qry Sakure.ipa Payload
+
+      - name: Upload the IPA
+        uses: actions/upload-artifact@v4
+        with:
+          # 名字要带上 runner 标签 —— 矩阵里两个 job 同时上传，
+          # 用同一个名字会冲突（upload-artifact@v4 不允许同名 artifact）。
+          name: Sakure-unsigned-ipa-${{ matrix.os }}
+          path: ios/build/Sakure.ipa
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          echo "### ✅ IPA 出好了" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "未签名的 IPA 在上面的 artifact 里（\`Sakure-unsigned-ipa\`）。" >> "$GITHUB_STEP_SUMMARY"
+          echo "下载后拿爱思助手签一下就能装到 iPhone 上。" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "> 免费 Apple ID 签的名 **7 天就过期**，过期后重新签一次装上就能续。" >> "$GITHUB_STEP_SUMMARY"
