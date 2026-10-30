@@ -78,6 +78,34 @@ jobs:
       - name: Build the mobile renderer
         run: node mobile/build-mobile.mjs
 
+      - name: Verify the renderer CSS
+        # ★ 这一步是踩过坑之后加的：打包脚本漏掉 `postcss.config.js` 时，
+        # 云端构建**照样成功**，但 Tailwind 整个没跑 —— `flex` / `absolute` /
+        # `inset-0` 这些 utility 类一个都不生成，界面元素按文档流堆在左上角、
+        # 互相压着。装到 iPad 上才看得出来，而那已经是用户手里了。
+        #
+        # 判据：生成的 CSS 里必须有 Tailwind 的 utility 类。
+        # （正常约 212 KB；没有 Tailwind 时只有约 30 KB，且 `.flex` 计数为 0。）
+        run: |
+          set -u
+          CSS=$(ls -S dist-mobile/assets/src-*.css 2>/dev/null | head -1)
+          if [ -z "$CSS" ]; then
+            echo "❌ 没找到渲染层的 CSS（dist-mobile/assets/src-*.css）"
+            exit 1
+          fi
+          SIZE=$(wc -c < "$CSS")
+          echo "CSS 文件: $CSS（$SIZE bytes）"
+          for cls in flex absolute fixed inset-0 items-center; do
+            COUNT=$(grep -o "\.${cls}[,{ ]" "$CSS" 2>/dev/null | wc -l | tr -d ' ')
+            echo "  .${cls}: ${COUNT} 处"
+            if [ "$COUNT" = "0" ]; then
+              echo "❌ Tailwind 的 utility 类没有生成 —— 界面会没有布局。"
+              echo "   多半是 postcss.config.js 没进构建包（Tailwind 靠 PostCSS 插件跑）。"
+              exit 1
+            fi
+          done
+          echo "✅ Tailwind 的 utility 类都在"
+
       - name: Sync into the iOS project
         run: npx cap sync ios
 
