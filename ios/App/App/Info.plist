@@ -66,6 +66,20 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<!--
+		状态栏一打开就藏着。
+		没有这两个键时，Capacitor 的 `CAPBridgeViewController.setStatusBarDefaults()`
+		会让 `isStatusBarVisible` 保持 true —— 也就是状态栏**先显示着**，要等页面里
+		那句 `StatusBar.hide()` 跑到才藏。那中间的一段时间（启动图到页面第一帧）
+		就是一条压在界面上的状态栏，和 Android 那边「先露一条再藏掉」是同一个毛病。
+
+		`UIStatusBarStyleLightContent`：用户往下一拉把状态栏叫出来时，底色是应用的
+		深色（#09090b），字得是亮的。
+	-->
+	<key>UIStatusBarHidden</key>
+	<true/>
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleLightContent</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
