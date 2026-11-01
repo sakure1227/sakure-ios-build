@@ -485,7 +485,7 @@ const bridge = {
 
     // --- 存储与设置 ---
     getSettings: async () => getSettings(),
-    saveSettings: async (settings: unknown) => saveSettings(settings),
+    saveSettings: async (key: string, value: unknown) => saveSettings(key, value),
     setNativeTheme: async () => true,
     setAppLocale: async () => true,
 
@@ -543,11 +543,30 @@ const bridge = {
     getBackgroundThrottlingState: async () => ({ disabled: false }),
     onBackgroundThrottlingChanged: () => () => {},
     getFfmpegStatus: async () => ({ available: false }),
-    getAutomixModelsPresent: async () => false,
-    getBeatThisGpuWeights: async () => false,
-    getHtdemucsGpuWeights: async () => false,
-    separateStems: async () => false,
-    runBeatThis: async () => false,
+
+    // --- 分析模型（手机版**不提供**这些接口）---
+    //
+    // ★ 这里原来给了一组「假实现」（`getAutomixModelsPresent: async () => false` 等），
+    //   与本文件自己的原则相悖（见上面「平台 API」那段注释：给了假实现，
+    //   消费方会以为能力在，于是把请求发给它，拿回来一片假数据）。
+    //
+    // 具体的坏处：**能力判定看的是「这个函数在不在」，不是「它答什么」**：
+    //
+    // - `src/services/automix/stems.ts` 的 `canSeparateStemsOnCpu()` 看
+    //   `typeof window.electron?.separateStems === 'function'` → 手机端误判为「能分轨」。
+    // - `src/hooks/useSmartBeatAvailability.ts` 的 `hasBeatThisBridge()` 看
+    //   `typeof window.electron?.getBeatThisGpuWeights === 'function'` → 手机端误判为
+    //   「有桌面桥」，于是**界面上不显示「需要桌面版」的提示** ——
+    //   用户打开「智能动感模式」，开关是开的，什么也不发生，也没话说。
+    //
+    // 所以按原则**删掉**：能力判定于是正确地答「手机版没有这些」。
+    // `getAutomixModelsPresent` 也一并删掉 —— 它在桌面上返回的是
+    // `{beat_this, htdemucs, htdemucs_gpu}` 这样的对象，手机端原来返回 `false`
+    // （形状都不一样），`refreshModelAvailability` 读 `answer.beat_this` 拿到 undefined，
+    // 判成 false —— 结论对，但那是「碰巧对」，不是「按契约对」。
+    //
+    // 删掉之后 `modelCanRun('beat_this')` 恒为 false，`canRunBeatThis()` 恒为 false，
+    // 手机端就**明确地**知道自己没有节拍分析能力。
     getLyricApiStatus: async () => ({ enabled: false }),
     setLyricApiEnabled: async () => false,
     onLyricApiStatusChanged: () => () => {},
@@ -635,9 +654,37 @@ const bridge = {
     getLoginDiagnostics: async () => null,
 
     // --- 歌词代理（手机版直连即可）---
-    fetchLyricProxy: async (url: string) => {
-        const result = await CsHttp.request({ url, method: 'GET', responseType: 'text', timeout: 15_000 });
-        return result.data ?? '';
+    //
+    // ★ 返回的形状必须与桌面桥一样 ★
+    //
+    // 桌面那边（`electron/main.cjs` 的 `proxyLyricRequest`）返回
+    // `{ ok, status, statusText, headers, bodyText }`，消费方按这个形状读：
+    // `src/utils/lyrics/providers/amllApi.ts` 读 `response.status` / `response.bodyText`，
+    // `src/services/onlineMusic/kugou/kugouTransport.ts` 读 `response.ok` / `response.bodyText`。
+    //
+    // 之前这里返回的是**一个字符串**（`result.data`）—— 于是手机端拿到的
+    // `response.status` 是 undefined、`response.bodyText` 也是 undefined：
+    // AMLL 歌词库整个失效（`getAmllApiData` 永远返回 null），
+    // 酷狗的旧版播放路径也会走进 `throw legacyPlayInfoHttpError(undefined, undefined)`。
+    //
+    // 另一个要点：**请求头也要带**。AMLL 要一个 User-Agent，
+    // `amllApi.ts` 传了 init，这里原来整个忽略掉 init（只接了 url）。
+    fetchLyricProxy: async (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => {
+        const result = await CsHttp.request({
+            url,
+            method: (init?.method ?? 'GET').toUpperCase(),
+            headers: init?.headers ?? {},
+            body: init?.body,
+            responseType: 'text',
+            timeout: 15_000,
+        });
+        return {
+            ok: result.status >= 200 && result.status < 300,
+            status: result.status,
+            statusText: '',
+            headers: result.headers ?? {},
+            bodyText: result.data ?? '',
+        };
     },
     publishLyricApiData: async () => false,
 
@@ -835,8 +882,33 @@ const getSettings = async (): Promise<Record<string, unknown>> => (
     readJson<Record<string, unknown>>(SETTINGS_KEY, {})
 );
 
-const saveSettings = async (settings: unknown): Promise<void> => {
-    await writeJson(SETTINGS_KEY, settings);
+/**
+ * 存一个设置项。
+ *
+ * ★ 语义必须与桌面桥一样：`saveSettings(key, value)`，逐键写入 ★
+ *
+ * 桌面那边（`electron/main.cjs` 的 `save-settings` IPC）收的是 `(key, value)`，
+ * 写进 electron-store 的**一个键**，然后返回整份公开设置。
+ *
+ * 之前手机版这里收的是**一个对象**（`saveSettings(settings)`），把整个对象覆写进去 ——
+ * 而所有调用方都按桌面那套两参调用（`SettingsModal.tsx` 的
+ * `saveSettings('GEMINI_API_KEY', value)`、`buildSettingsDialogModel.ts` 的
+ * `saveSettings('STAGE_MODE_SOURCE', source)`）。
+ *
+ * 于是手机端把 `'GEMINI_API_KEY'` 这个**字符串**当成了整份设置写进去 ——
+ * 一份设置被一个字符串覆盖掉，全乱。
+ *
+ * 现在按桌面的语义来：只写这一个键，然后返回整份（公开的）设置。
+ */
+const saveSettings = async (key: string, value: unknown): Promise<Record<string, unknown>> => {
+    if (typeof key !== 'string') {
+        // 与桌面一致：键不是字符串就什么都不写，把当前设置还回去。
+        return getSettings();
+    }
+    const current = await getSettings();
+    const next = { ...current, [key]: value };
+    await writeJson(SETTINGS_KEY, next);
+    return next;
 };
 
 const Clipboard = registerPlugin<{ read(): Promise<{ value: string }> }>('Clipboard');
