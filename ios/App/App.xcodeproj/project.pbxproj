@@ -7,9 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AB12000000000000000007D1 /* CsCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12000000000000000003E9 /* CsCrypto.swift */; };
-		AB1200000000000000000FA1 /* CsHttp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1200000000000000000BB9 /* CsHttp.swift */; };
-		AB1200000000000000001771 /* CsMediaSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1200000000000000001389 /* CsMediaSession.swift */; };
+		AB12000000000000000007D0 /* CsCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12000000000000000003E8 /* CsCrypto.swift */; };
+		AB1200000000000000000FA0 /* CsHttp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1200000000000000000BB8 /* CsHttp.swift */; };
+		AB1200000000000000001770 /* CsMediaSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1200000000000000001388 /* CsMediaSession.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
@@ -22,9 +22,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		AB12000000000000000003E9 /* CsCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CsCrypto.swift; sourceTree = "<group>"; };
-		AB1200000000000000000BB9 /* CsHttp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CsHttp.swift; sourceTree = "<group>"; };
-		AB1200000000000000001389 /* CsMediaSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CsMediaSession.swift; sourceTree = "<group>"; };
+		AB12000000000000000003E8 /* CsCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CsCrypto.swift; sourceTree = "<group>"; };
+		AB1200000000000000000BB8 /* CsHttp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CsHttp.swift; sourceTree = "<group>"; };
+		AB1200000000000000001388 /* CsMediaSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CsMediaSession.swift; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -50,12 +50,12 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		AB1200000000000000001B59 /* Plugins */ = {
+		AB1200000000000000001B58 /* Plugins */ = {
 			isa = PBXGroup;
 			children = (
-				AB12000000000000000003E9 /* CsCrypto.swift */,
-				AB1200000000000000000BB9 /* CsHttp.swift */,
-				AB1200000000000000001389 /* CsMediaSession.swift */,
+				AB12000000000000000003E8 /* CsCrypto.swift */,
+				AB1200000000000000000BB8 /* CsHttp.swift */,
+				AB1200000000000000001388 /* CsMediaSession.swift */,
 			);
 			path = Plugins;
 			sourceTree = "<group>";
@@ -89,7 +89,7 @@
 				504EC3131FED79650016851F /* Info.plist */,
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
-				AB1200000000000000001B59 /* Plugins */,
+				AB1200000000000000001B58 /* Plugins */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -175,9 +175,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AB12000000000000000007D1 /* CsCrypto.swift in Sources */,
-				AB1200000000000000000FA1 /* CsHttp.swift in Sources */,
-				AB1200000000000000001771 /* CsMediaSession.swift in Sources */,
+				AB12000000000000000007D0 /* CsCrypto.swift in Sources */,
+				AB1200000000000000000FA0 /* CsHttp.swift in Sources */,
+				AB1200000000000000001770 /* CsMediaSession.swift in Sources */,
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 			);
