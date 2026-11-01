@@ -88,6 +88,7 @@ import { resolveActiveProviderSummary } from './library/core/account/accountRule
 import { useAppPreferences } from './hooks/useAppPreferences';
 import { useElectronPlaybackBridge } from './components/app/playback/bridges/useElectronPlaybackBridge';
 import { useElectronDisplaySleepBlocker } from './hooks/useElectronDisplaySleepBlocker';
+import { useKeepScreenOn } from './hooks/useKeepScreenOn';
 import { useBackgroundLyricHold } from './components/app/backgroundThrottling/useBackgroundLyricHold';
 import { readLiveLyricTime, useBackgroundLyricHoldStore } from './components/app/backgroundThrottling/backgroundLyricHoldStore';
 import { useSleepTimer } from './hooks/useSleepTimer';
@@ -536,6 +537,9 @@ export default function App() {
         preventDisplaySleepDuringPlayback,
         playerState === PlayerState.PLAYING,
     );
+    // 「不熄屏」：把存下来的偏好推给原生（手机版才有用，桌面那边是空操作）。
+    // 必须在启动时推一次 —— 原生那边不跨进程（iOS 尤其如此）。
+    useKeepScreenOn();
     useBackgroundLyricHold();
     // The app.overlay mod layers read the same lyric clock and line the hold keeps still: paused with it.
     const backgroundLyricHeld = useBackgroundLyricHoldStore(state => state.held);
