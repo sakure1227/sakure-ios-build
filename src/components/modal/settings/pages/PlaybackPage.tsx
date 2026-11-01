@@ -9,7 +9,9 @@ import { canAnalyseTracks } from '../../../../services/automix/transitionStrateg
 import { useAudioSettingsStore } from '../../../../stores/useAudioSettingsStore';
 import { useAutomixSettingsStore } from '../../../../stores/useAutomixSettingsStore';
 import { useDesktopSettingsStore } from '../../../../stores/useDesktopSettingsStore';
+import { useKeepScreenOnStore } from '../../../../stores/useKeepScreenOnStore';
 import { runsOnWindows } from '../../../../utils/platform';
+import { isNativeShellRuntime } from '../../../../utils/mobileRuntime';
 import { Button, Chips, Group, Reveal, Row, Segmented, Slider, Status, Toggle, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 import AudioOutputDeviceRow from './AudioOutputDeviceRow';
 import { useSettingsPage } from './settingsPageContext';
@@ -38,6 +40,15 @@ const O = {
     queueBehavior: option(BEHAVIOR, 'queueDefaultBehavior', 'options.queueDefaultBehavior'),
     autoSkipUnplayable: option(BEHAVIOR, 'autoSkipUnplayable', 'options.autoSkipUnplayable'),
     preventSleep: option(BEHAVIOR, 'preventDisplaySleepDuringPlayback', 'options.preventDisplaySleepDuringPlayback', { electronOnly: true }),
+    // 「不熄屏」——手机端（Capacitor 壳）才画这一行。
+    //
+    // 桌面端另有一条「播放时阻止休眠」（上面那条，electronOnly），走的是
+    // Electron 的 powerSaveBlocker。那条是**只在播放时**生效；
+    // 这一条是**应用在前台时**一直生效 —— 两件事不是一个，所以各留各的。
+    //
+    // `available` 是给设置搜索用的：它问「这一台机器上画不画这一行」，
+    // 桌面版上这里返回 false，搜索里就不会出现它。
+    keepScreenOn: option(BEHAVIOR, 'keepScreenOn', 'options.keepScreenOn', { available: () => isNativeShellRuntime() }),
     voiceInputPause: option(BEHAVIOR, 'voiceInputPause', 'options.voiceInputPause', { electronOnly: true, available: () => runsOnWindows() }),
 };
 
@@ -84,6 +95,10 @@ const PlaybackPage: React.FC = () => {
     })));
     const preventSleep = useDesktopSettingsStore(state => state.preventDisplaySleepDuringPlayback);
     const setPreventSleep = useDesktopSettingsStore(state => state.handleTogglePreventDisplaySleepDuringPlayback);
+    // 「不熄屏」——手机端专属（原生壳）。桌面端那条「播放时阻止休眠」在下面。
+    const keepScreenOn = useKeepScreenOnStore(state => state.keepScreenOn);
+    const setKeepScreenOn = useKeepScreenOnStore(state => state.handleToggleKeepScreenOn);
+    const isNativeShell = isNativeShellRuntime();
 
     // Asked on every render, not kept: whether the models are on disk can change while the page is
     // open, and the subscription below only makes the page render again when it does.
@@ -228,6 +243,11 @@ const PlaybackPage: React.FC = () => {
                 {isElectron && (
                     <Row option={O.preventSleep} hint={t('options.preventDisplaySleepDuringPlaybackDesc')}>
                         <Toggle checked={preventSleep} onChange={setPreventSleep} />
+                    </Row>
+                )}
+                {isNativeShell && (
+                    <Row option={O.keepScreenOn} hint={t('options.keepScreenOnDesc')}>
+                        <Toggle checked={keepScreenOn} onChange={setKeepScreenOn} />
                     </Row>
                 )}
                 {voiceInputPause.supported && (
