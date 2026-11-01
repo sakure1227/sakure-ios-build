@@ -121,7 +121,21 @@ const DEFAULT_UPDATE_CHANNEL: 'realeco' | 'limo' | 'cielo' | 'internal' = __APP_
             : 'realeco';
 
 // Synchronous on purpose: the first render has to know which sections exist before the isElectron state below settles.
-const hasElectronBridge = () => typeof window !== 'undefined' && Boolean((window as any).electron);
+//
+// ★ 手机版**不算**桌面 ★
+//
+// 手机版也有 `window.electron`（手机壳的桥，形状与桌面那一份一样），所以只看
+// 「桥在不在」的话，手机上 `isElectron` 是 true —— 于是设置导航里会冒出
+// 「桌面」「模组」「自定义源」三个**手机端根本没有**的分区，
+// 「AI 供应商设置」页也会渲染出来（那页在桌面上是唯一的 AI 凭据入口）。
+//
+// 这个判定与同一个文件里的 `isElectronRuntime`（第 425 行）必须一致 ——
+// 那处已经正确地排除了原生壳，这里之前漏了。
+const hasElectronBridge = () => (
+    typeof window !== 'undefined'
+    && Boolean((window as any).electron)
+    && !isNativeShellRuntime()
+);
 
 const SettingsModal: React.FC<SettingsModalProps> = ({
     onClose,
@@ -446,6 +460,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     useEffect(() => {
         const electron = (window as any).electron;
         if (!electron) {
+            return;
+        }
+        // 手机版不算桌面（见上面 `hasElectronBridge` 的说明）。
+        // 它没有桌面那些设置可读，也不该显示桌面的分区。
+        if (isNativeShellRuntime()) {
             return;
         }
         setIsElectron(true);
