@@ -94,7 +94,20 @@ jobs:
             exit 1
           fi
           SIZE=$(wc -c < "$CSS")
-          echo "CSS 文件: $CSS（$SIZE bytes）"
+          # ★ `${CSS}` 不能写成 `$CSS` ★
+          #
+          # 下一个字符是全角括号「（」。bash 判断变量名合法字符时是**按字节**看的，
+          # 在 macOS runner 的 UTF-8 locale 下，多字节字符的后续字节会被当成变量名的
+          # 一部分 —— 于是 `$CSS（` 被解析成变量 `CSS<0xEF><0xBC><0x88>`，
+          # 而 `set -u` 遇到未定义变量就直接报错：
+          #
+          #   line 8: CSS?: unbound variable
+          #
+          # 本地（Git Bash / locale 不同）不触发，**只有云端 macOS runner 会炸** ——
+          # 所以这个坑在本地怎么测都测不出来。
+          #
+          # 凡是变量后面紧跟非 ASCII 字符，一律用 `${变量}` 划清边界。
+          echo "CSS 文件: ${CSS}（$SIZE bytes）"
           for cls in flex absolute fixed inset-0 items-center; do
             COUNT=$(grep -o "\.${cls}[,{ ]" "$CSS" 2>/dev/null | wc -l | tr -d ' ')
             echo "  .${cls}: ${COUNT} 处"
