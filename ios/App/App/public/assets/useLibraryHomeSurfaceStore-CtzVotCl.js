@@ -1,0 +1,1 @@
+import{n as e,t}from"./esm-DIAA5aiV.js";t();var n=e((e,t)=>({tabs:null,list:null,registerTabs:n=>(e({tabs:n}),()=>{t().tabs===n&&e({tabs:null})}),registerList:n=>(e({list:n}),()=>{t().list===n&&e({list:null})})}));export{n as t};
