@@ -56,7 +56,8 @@ public class CsMediaSession: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "setBackgrounded", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getCoexistMode", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setCoexistMode", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "reclaimFocus", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "reclaimFocus", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setKeepScreenOn", returnType: CAPPluginReturnPromise)
     ]
 
     /// 曲目的信息（锁屏面板要用）。
@@ -247,6 +248,39 @@ public class CsMediaSession: CAPPlugin, CAPBridgedPlugin {
     /// 请求，iOS 上原生这边直接回一个「好」就行。
     @objc func reclaimFocus(_ call: CAPPluginCall) {
         call.resolve()
+    }
+
+    // MARK: - 屏幕常亮（不熄屏）
+
+    /// 让屏幕别自动熄灭。
+    ///
+    /// ## iOS 上是怎么实现的
+    ///
+    /// `UIApplication.isIdleTimerDisabled = true` —— 这是 iOS 唯一的「屏幕别灭」开关。
+    /// 设成 true 之后，系统不再因为用户长时间不触摸而把屏幕调暗、锁屏。
+    /// 应用一进后台它自动失效（系统接管了），回前台时**仍然是 true**
+    /// —— 这个属性挂在 `UIApplication` 上，不会因为切后台被重置。
+    ///
+    /// ## 必须在主线程设
+    ///
+    /// Capacitor 把插件方法派发到 bridge 的**后台队列**上
+    /// （`CapacitorBridge.swift` 里的 `dispatchQueue.async`），
+    /// 而 `isIdleTimerDisabled` 是 UIKit 的属性，**只能在主线程改** ——
+    /// 在后台队列上改它，轻则不生效，重则行为未定义。
+    ///
+    /// 所以这里显式切回主线程。
+    ///
+    /// ## 与 Android 的对应
+    ///
+    /// Android 那边的对应物是窗口上的 `FLAG_KEEP_SCREEN_ON`
+    /// （`CsMediaSession.java` 的 `setKeepScreenOn`）——
+    /// 同样是「屏幕别自动灭」，同样由渲染层的那个开关驱动。
+    @objc func setKeepScreenOn(_ call: CAPPluginCall) {
+        let enabled = call.getBool("enabled", false)
+        DispatchQueue.main.async {
+            UIApplication.shared.isIdleTimerDisabled = enabled
+            call.resolve()
+        }
     }
 
     // MARK: - 锁屏面板的内容
