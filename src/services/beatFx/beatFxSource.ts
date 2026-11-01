@@ -10,6 +10,10 @@ import { getPlaybackAnalysisTarget } from '../playbackRecovery/representationReg
 import { isCacheableAudioResponse } from '../playbackRecovery/mediaCacheGuard';
 import { getPrefetchedData, isUrlValid } from '../prefetchService';
 import { getPlaybackSourceRef } from '../../utils/appPlaybackGuards';
+import { beatGridFingerprintForSong } from '../sync/beatGridSync';
+import { pullRemoteBeatGridsToLocal } from '../sync/beatGridRepository';
+import { visualizerWantsBeats } from '../../components/visualizer/beatClockTargets';
+import { useVisualizerSettingsStore } from '../../stores/useVisualizerSettingsStore';
 import type { PlaybackRepresentation } from '../../types/playbackRecovery';
 
 // src/services/beatFx/beatFxSource.ts
@@ -156,6 +160,22 @@ const resolveTrackBeats = async (
     try {
         // The picture on screen waits on these: ahead of automix's background profiles on the GPU.
         grid = await getTrackBeatGrid(key, readMid, { storedOnly, urgency: 'onScreen' });
+        if (!grid?.beats.length) {
+            // 本地没有：这台机器又分析不了（手机版没有 WebGPU、没有权重）时，
+            // 去同步服务器问一次 —— 桌面端分析过的表就在那儿。
+            // 拉到了就落到本地缓存，这里再读一次。
+            //
+            // 桌面端几乎不走这条（本地通常有；真要拉时服务器里也有），
+            // 而它是**唯一**能让手机版拿到拍点的地方。
+            //
+            // `storedOnly`（智能动感模式的 `cached` 档）也要拉：那一档的意思正是
+            // 「只读存好的结果」，而同步过来的表就是存好的结果之一。
+            // 但「关掉智能动感模式」（`off`）时 `storedOnly` 也是 true —— 那时
+            // 不该为了一个用不上的效果去打扰服务器，所以先看效果是不是开着。
+            if (await shouldFetchSyncedBeats(song, storedOnly) && await fetchSyncedBeatGrid(song, key)) {
+                grid = await getTrackBeatGrid(key, readMid, { storedOnly, urgency: 'onScreen' });
+            }
+        }
     } catch (error) {
         // A throw here (a cache read, a worker, a GPU device lost mid-run) is "no beats" like any
         // other: answered, so the caller's frame falls back, and not remembered, so a later play retries.
@@ -184,6 +204,72 @@ const resolveTrackBeats = async (
     }
     if (!storedOnly && !canRunBeatThis()) return { events: [], source: 'none', note: 'not the desktop app', trackScale: 1 };
     return { events: [], source: 'none', note, trackScale: 1, ...(retry ? { retry } : {}) };
+};
+
+/**
+ * 从同步服务器把这首歌的节拍表拉下来。
+ *
+ * ## 为什么需要这一步
+ *
+ * 手机版**当场分析不出来**（没有 WebGPU，也没有模型权重 —— 见 `canRunBeatThis`），
+ * 但桌面端分析过的节拍表只是一串时间戳 —— 同步过来就能用。
+ *
+ * 所以本地没有、且这台机器也分析不了时，问一次同步服务器：
+ * 拉到了就落到本地缓存（`beat_this_grid_<分析键>`），下一次直接读缓存。
+ *
+ * ## 为什么放在这里
+ *
+ * 这里是所有路径的汇合点：桌面的「智能动感模式」与 automix 都走它。
+ * 桌面上这一步几乎不花钱（本地缓存里通常有；真要拉时服务器里也有），
+ * 而它是**唯一**能让手机版拿到拍点的地方。
+ *
+ * ## 拉不到就算了
+ *
+ * 同步是可选功能（要用户自建服务器），服务器上可能没有这首歌的表，
+ * 也可能连不上。任何一种都只是「没有节拍」—— 那本来就是没有节拍时的样子，
+ * 不该变成错误，也不该拖慢播放。所以这里全部兜住，只记一条日志。
+ */
+const fetchSyncedBeatGrid = async (song: SongResult, key: string): Promise<boolean> => {
+    try {
+        const fingerprint = beatGridFingerprintForSong(song);
+        if (!fingerprint) {
+            return false;
+        }
+        const result = await pullRemoteBeatGridsToLocal([fingerprint]);
+        return result.downloadedCount > 0;
+    } catch (error) {
+        console.info('[BeatFx] the synced beat list could not be fetched:', error);
+        return false;
+    }
+};
+
+/**
+ * 该不该去同步服务器问一次节拍表。
+ *
+ * 三个条件都要满足：
+ *
+ * 1. **这台机器分析不了** —— 有 WebGPU 的话，分析比拉快得多（本地就有）。
+ * 2. **效果开着** —— 智能动感模式关了，或者屏幕上没有要拍点的效果时，
+ *    不该为了一个用不上的东西去打扰服务器。
+ * 3. **这歌能对齐** —— 只有在线歌曲能跨端对上（本地曲库的 id 每台机器各自生成，
+ *    见 `beatGridSync.ts`）。
+ */
+const shouldFetchSyncedBeats = async (song: SongResult, storedOnly: boolean): Promise<boolean> => {
+    if (canRunBeatThis()) {
+        // 这台机器能自己分析 —— 分析比拉快（本地就有），也更新（刚分析的重音更准）。
+        return false;
+    }
+    if (!storedOnly) {
+        // 「当场分析」那档：这台机器做不到（上面已经排除了），只能靠同步。
+        return true;
+    }
+    // 「只读存好的」那档：只有屏幕上真的在放要拍点的效果时才值得拉。
+    try {
+        const settings = useVisualizerSettingsStore.getState();
+        return visualizerWantsBeats(settings);
+    } catch {
+        return false;
+    }
 };
 
 /**

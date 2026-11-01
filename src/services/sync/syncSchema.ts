@@ -8,6 +8,7 @@ import {
     type SyncRemoteState,
     type SyncThemeBucketSummary,
     type SyncThemeManifest,
+    type SyncedBeatGridRecord,
     type SyncedSettingsRecord,
     type SyncedVisualSettings,
     type SyncedThemeRecord,
@@ -143,6 +144,58 @@ export const parseSyncedThemeRecords = (value: unknown): SyncedThemeRecord[] => 
         .filter((record): record is SyncedThemeRecord => Boolean(record));
 };
 
+/**
+ * 一串时刻（秒）—— 节拍表的拍点与小节第一拍。
+ *
+ * 校验得**紧**：服务器给的是不可信的数据，而这份数据最后会变成
+ * 「什么时候让歌词跳一下」的时刻。���个 NaN 或负数会让画面在奇怪的位置弹。
+ *
+ * - 必须是有限数
+ * - 不能是负数（时刻不能早于 0）
+ * - 上限：一首歌的拍点不会超过十万（那是七小时的歌）
+ */
+const isTimeList = (value: unknown): value is number[] => (
+    Array.isArray(value)
+    && value.length <= 100_000
+    && value.every((item) => typeof item === 'number' && Number.isFinite(item) && item >= 0)
+);
+
+export const parseSyncedBeatGridRecord = (value: unknown): SyncedBeatGridRecord | null => {
+    if (!isRecord(value)
+        || typeof value.fingerprint !== 'string'
+        || !value.fingerprint
+        || !isIsoDateString(value.updatedAt)
+        || !isTimeList(value.beats)
+        || !value.beats.length
+        || !isTimeList(value.downbeats)
+    ) {
+        return null;
+    }
+
+    const record: SyncedBeatGridRecord = {
+        fingerprint: value.fingerprint,
+        beats: value.beats,
+        downbeats: value.downbeats,
+        updatedAt: value.updatedAt,
+    };
+    // 重音是可选的：桌面端存表时可能还没有重音。没有它，镜台的涟漪强弱一样，
+    // 但「歌词随拍跳动」照旧（它只用拍点与小节第一拍）。
+    if (value.accents !== undefined && value.accents !== null) {
+        record.accents = value.accents;
+    }
+    return record;
+};
+
+export const parseSyncedBeatGridRecords = (value: unknown): SyncedBeatGridRecord[] => {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    return value
+        .map(parseSyncedBeatGridRecord)
+        .filter((record): record is SyncedBeatGridRecord => Boolean(record));
+};
+
 export const parseSyncLibraryExportBundle = (value: unknown): SyncLibraryExportBundle | null => {
     if (!isRecord(value)
         || value.kind !== 'folia-sync-export'
@@ -158,6 +211,11 @@ export const parseSyncLibraryExportBundle = (value: unknown): SyncLibraryExportB
         return null;
     }
 
+    // 节拍表是可选的 —— 旧版本的导出包里没有这一项，那就没有。
+    const beatGrids = value.beatGrids === undefined || value.beatGrids === null
+        ? undefined
+        : parseSyncedBeatGridRecords(value.beatGrids);
+
     const settings = value.settings === null
         ? null
         : parseSyncedSettingsRecord(value.settings);
@@ -171,6 +229,7 @@ export const parseSyncLibraryExportBundle = (value: unknown): SyncLibraryExportB
         exportedAt: value.exportedAt,
         settings,
         themes: themes as SyncedThemeRecord[],
+        ...(beatGrids ? { beatGrids } : {}),
     };
 };
 

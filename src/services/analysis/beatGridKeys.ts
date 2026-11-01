@@ -16,6 +16,19 @@ const LEGACY_BEAT_GRID_PREFIXES = ['beat_this_small_grid_'] as const;
 export const isBeatGridKey = (key: string): boolean =>
     [BEAT_GRID_PREFIX, ...LEGACY_BEAT_GRID_PREFIXES].some(prefix => key.startsWith(prefix));
 
+/**
+ * 节拍表存下来了之后发的事件名。
+ *
+ * 同步层听它，把新存下来的表推到服务器（`src/services/sync/beatGridRepository.ts`）。
+ *
+ * 为什么用事件而不是直接调用同步层：`beatGrid.ts` 是**底层**模块（它自己就住在
+ * 数据库那一层），直接 import 同步层会把 sync → analysis → sync 的环拉进来。
+ * 事件是单向的：这里发，同步层听，两边互不知道对方。
+ *
+ * 常量放在这个无依赖的模块里，就是为了让同步层能拿到它而不必碰 `beatGrid.ts`。
+ */
+export const BEAT_GRID_STORED_EVENT = 'folia-beat-grid-stored';
+
 /** A track's drum hits off htdemucs' drum stem (drumHits.ts); the version is part of the prefix. */
 export const DRUM_HITS_PREFIX = 'drum_hits_v1_';
 

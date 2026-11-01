@@ -2,6 +2,7 @@ import type {
     SyncProviderConfig,
     SyncRemoteState,
     SyncThemeManifest,
+    SyncedBeatGridRecord,
     SyncedSettingsRecord,
     SyncedThemeRecord,
     WorkerHealthResponse,
@@ -9,6 +10,7 @@ import type {
 import {
     parseSyncRemoteState,
     parseSyncThemeManifest,
+    parseSyncedBeatGridRecords,
     parseSyncedSettingsRecord,
     parseSyncedThemeRecords,
 } from './syncSchema';
@@ -113,6 +115,59 @@ export const putRemoteThemes = async (
         method: 'POST',
         body: JSON.stringify({ themes }),
     });
+};
+
+/**
+ * 取这些歌的节拍表。
+ *
+ * 旧服务器没有这个端点（404）—— 那就当「远端没有节拍表」，不是错误：
+ * 同步是可选功能，服务器版本参差不齐是常态。
+ */
+export const getRemoteBeatGrids = async (
+    config: SyncProviderConfig,
+    fingerprints: string[],
+): Promise<SyncedBeatGridRecord[]> => {
+    const uniqueFingerprints = Array.from(new Set(fingerprints.filter(Boolean)));
+    if (uniqueFingerprints.length === 0) {
+        return [];
+    }
+
+    try {
+        const response = await requestJson<{ beatGrids?: unknown[] }>(config, '/beats/get', {
+            method: 'POST',
+            body: JSON.stringify({ fingerprints: uniqueFingerprints }),
+        });
+        return parseSyncedBeatGridRecords(response.beatGrids ?? []);
+    } catch (error) {
+        // 404 = 这个服务器还没有节拍表的功能（老版本）。
+        if (error instanceof SyncClientError && error.status === 404) {
+            return [];
+        }
+        throw error;
+    }
+};
+
+/** 把这些节拍表放到远端。 */
+export const putRemoteBeatGrids = async (
+    config: SyncProviderConfig,
+    beatGrids: SyncedBeatGridRecord[],
+) => {
+    if (beatGrids.length === 0) {
+        return;
+    }
+
+    try {
+        await requestJson(config, '/beats/put', {
+            method: 'POST',
+            body: JSON.stringify({ beatGrids }),
+        });
+    } catch (error) {
+        // 同上：老服务器没有这个端点，放不上去就算了，不该让整个同步失败。
+        if (error instanceof SyncClientError && error.status === 404) {
+            return;
+        }
+        throw error;
+    }
 };
 
 export const getRemoteThemesByBuckets = async (

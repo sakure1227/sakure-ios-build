@@ -3,7 +3,7 @@ import { melSpectrogramOffThread } from '../automix/analysisOffThread';
 import { analyseBeatGrid, canRunBeatThis, type BeatGrid } from './beatThis';
 import { raiseGpuUrgency, runPercussiveEnergyGpu } from './beatThisGpu';
 import type { Urgency } from './scheduler';
-import { BEAT_GRID_PREFIX } from './beatGridKeys';
+import { BEAT_GRID_PREFIX, BEAT_GRID_STORED_EVENT } from './beatGridKeys';
 import { computeBeatAccents, formatBeatMeter, isBeatAccents, resolveBeatConfidence, type BeatAccents, type BeatMeter } from './beatAccents';
 
 // src/services/analysis/beatGrid.ts
@@ -65,12 +65,26 @@ export const readStoredBeatGrid = async (key: string): Promise<AccentedBeatGrid 
     return grid;
 };
 
-/** Stores a whole-track beat list, with its accents if it has them; an empty one is not worth keeping. */
+/**
+ * 存下一首歌的节拍表（连同重音，如果有）；空的不值得存。
+ *
+ * ## 存完之后会发一个事件
+ *
+ * `folia-beat-grid-stored` —— 同步层听它，把新存下来的表推到服务器
+ * （`src/services/sync/beatGridRepository.ts`）。
+ *
+ * 为什么用事件而不是直接调用同步层：这个模块是**底层**（它自己就住在数据库那一层），
+ * 直接 import 同步层会把 sync → analysis → sync 的环拉进来。
+ * 事件是单向的：这里发，同步层听，两边互不知道对方。
+ */
 export const storeBeatGrid = async (key: string, grid: AccentedBeatGrid): Promise<void> => {
     if (!grid.beats.length) return;
     const entry: StoredBeatGrid = { version: BEAT_GRID_VERSION, beats: [...grid.beats], downbeats: [...grid.downbeats] };
     if (grid.accents && isBeatAccents(grid.accents, grid.beats.length)) entry.accents = grid.accents;
     await saveToCache(storageKey(key), entry);
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        window.dispatchEvent(new CustomEvent(BEAT_GRID_STORED_EVENT, { detail: { key } }));
+    }
 };
 
 interface Run {

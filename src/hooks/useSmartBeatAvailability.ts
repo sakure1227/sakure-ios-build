@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { probeBeatThisGpu } from '../services/analysis/beatThisGpu';
+import { isNativeShellRuntime } from '../utils/mobileRuntime';
+import { isSyncConfigured } from '../services/sync/syncConfig';
 import type { SmartBeatMode } from '../types';
 
 // src/hooks/useSmartBeatAvailability.ts
@@ -12,9 +14,30 @@ import type { SmartBeatMode } from '../types';
 // the GPU does not matter - nothing runs, and a list automix stored from a CPU run plays as well - so
 // only the bridge is asked, the analyses being the desktop app's.
 
-export type SmartBeatAvailability = 'ready' | 'desktopOnly' | 'noGpu';
+export type SmartBeatAvailability = 'ready' | 'desktopOnly' | 'noGpu' | 'syncedOnly';
 
-const hasBeatThisBridge = () => typeof window !== 'undefined' && typeof window.electron?.getBeatThisGpuWeights === 'function';
+/**
+ * 这台机器能不能**当场**分析节拍。
+ *
+ * 桌面端：有 Electron 主进程（跑模型的 IPC 在那儿）+ 权重在安装目录里 → 能。
+ * 手机端：两样都没有 —— iOS 26 之前的 WKWebView 没有 WebGPU
+ * （WebGPU 是 Safari 26 才加的），权重也在主进程的安装目录里，渲染层读不到。
+ */
+const canAnalyseHere = (): boolean => (
+    typeof window !== 'undefined'
+    && typeof window.electron?.getBeatThisGpuWeights === 'function'
+);
+
+/**
+ * 这台机器能不能**读到**节拍（自己分析出来的，或者同步过来的）。
+ *
+ * 手机端能读到同步过来的：桌面端分析过的表推到了同步服务器，手机端拉下来
+ * 落到本地缓存（`src/services/sync/beatGridRepository.ts`），节拍效果于是照样动。
+ *
+ * 但那要**配了同步服务器**才成 —— 同步是可选功能（用户自建服务器）。
+ * 没配的话手机端就真的没有节拍，这时该说「不可用」而不是「只能用同步过来的」。
+ */
+const canUseSyncedBeats = (): boolean => isNativeShellRuntime() && isSyncConfigured();
 
 /**
  * The GPU is probed only under `on`. Off, nothing is probed (no adapter request) and the answer is
@@ -37,6 +60,10 @@ export function useSmartBeatAvailability(mode: SmartBeatMode): SmartBeatAvailabi
     }, [probe]);
 
     if (mode === 'off') return 'ready';
-    if (!hasBeatThisBridge()) return 'desktopOnly';
+    if (!canAnalyseHere()) {
+        // 手机端：当场分析不了，但能读同步过来的 —— 所以不是「不可用」，
+        // 是「只能用同步过来的」。
+        return canUseSyncedBeats() ? 'syncedOnly' : 'desktopOnly';
+    }
     return gpu || !probe ? 'ready' : 'noGpu';
 }

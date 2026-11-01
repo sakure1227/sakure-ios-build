@@ -1,1 +1,0 @@
-import{n as e}from"./rolldown-runtime-C0FnF6B9.js";import{a as t,c as n}from"./providerRegistry-C4GnaajP.js";var r,i;e((()=>{t(),r=()=>n().filter(e=>typeof e.lxSourceId==`string`&&e.lxSourceId.length>0),i=()=>r().map(e=>e.id)}))();export{i as listLxMusicSourceIds,r as listLxMusicSources};

@@ -15,6 +15,7 @@ import {
 import { createSongSyncFingerprint, createSongSyncFingerprintCandidates } from './syncFingerprint';
 import { getPlaybackSongKey } from '../../utils/appPlaybackGuards';
 import { buildThemeBucketSummaries, getThemeBucketId } from './syncMerkle';
+import { storeBeatGridRecordsLocally } from './beatGridRepository';
 import {
     createLegacyNeteaseThemeSyncRecord,
     readThemeSyncRegistry,
@@ -494,6 +495,10 @@ export const saveSyncLibraryBundleToLocalCache = async (bundle: SyncLibraryExpor
     }
     if (registryRecords.length > 0) {
         await upsertThemeSyncRecords(registryRecords);
+    }
+    // 节拍表也落进本地缓存 —— 换了设备不必重新分析一遍（手机版本来就分析不了）。
+    if (bundle.beatGrids?.length) {
+        await storeBeatGridRecordsLocally(bundle.beatGrids);
     }
 };
 

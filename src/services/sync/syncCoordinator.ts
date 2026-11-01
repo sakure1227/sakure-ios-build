@@ -13,6 +13,7 @@ import {
     saveSyncLibraryBundleToLocalCache,
 } from './syncRepository';
 import { parseSyncLibraryExportBundle } from './syncSchema';
+import { pushLocalBeatGridsToRemote, watchBeatGridStores } from './beatGridRepository';
 import type { SyncLibraryExportBundle, SyncRemoteState } from './syncTypes';
 import { SYNC_SCHEMA_VERSION } from './syncTypes';
 
@@ -49,7 +50,12 @@ const pushCurrentSettings = async () => {
 export const initializeSyncCoordinator = () => {
     void syncNow({ syncThemes: true, applyRemoteSettings: false, pushSettings: false });
 
-    return () => {};
+    // 节拍表存下来了就推上去 —— 手机版当场分析不出来（没有 WebGPU、没有权重），
+    // 它能用的节拍表只有桌面端分析过的那份。
+    const stopWatching = watchBeatGridStores();
+    return () => {
+        stopWatching();
+    };
 };
 
 export const testSyncProviderConnection = async (config: SyncProviderConfig) => {
@@ -89,9 +95,13 @@ export type SyncNowResult = {
     skippedRemoteThemeScan: boolean;
     appliedRemoteSettings: boolean;
     pushedLocalSettings: boolean;
+    /** 同步过去的节拍表份数（智能动感模式在另一台设备上靠它）。 */
+    uploadedBeatGridCount: number;
+    /** 拉回来的节拍表份数。 */
+    downloadedBeatGridCount: number;
 };
 
-export const syncNow = async (options: { syncThemes?: boolean; applyRemoteSettings?: boolean; pushSettings?: boolean } = {}): Promise<SyncNowResult | null> => {
+export const syncNow = async (options: { syncThemes?: boolean; applyRemoteSettings?: boolean; pushSettings?: boolean; syncBeatGrids?: boolean } = {}): Promise<SyncNowResult | null> => {
     if (isSyncingInProgress) {
         return null;
     }
@@ -115,7 +125,18 @@ export const syncNow = async (options: { syncThemes?: boolean; applyRemoteSettin
         if (options.syncThemes ?? true) {
             themeSyncResult = await pushMissingLocalThemesToRemote(remoteState);
         }
-        
+
+        // 节拍表：推上去（桌面端分析过的，手机版要用）。
+        //
+        // 「拉」不用在这里做 —— 播放时那一首歌会自己去问服务器要
+        // （`src/services/beatFx/beatFxSource.ts` 的 `fetchSyncedBeatGrid`），
+        // 只拉正在放的那一首，不用把几百首都倒下来。
+        let beatGridResult = { uploadedCount: 0, downloadedCount: 0, skipped: true };
+        if (options.syncBeatGrids ?? true) {
+            const pushed = await pushLocalBeatGridsToRemote();
+            beatGridResult = { uploadedCount: pushed.uploadedCount, downloadedCount: 0, skipped: pushed.skipped };
+        }
+
         let appliedRemoteSettings = false;
         let pushedLocalSettings = false;
         if (options.applyRemoteSettings) {
@@ -133,10 +154,16 @@ export const syncNow = async (options: { syncThemes?: boolean; applyRemoteSettin
             skippedRemoteThemeScan: themeSyncResult.skippedRemoteThemeScan,
             appliedRemoteSettings,
             pushedLocalSettings,
+            uploadedBeatGridCount: beatGridResult.uploadedCount,
+            downloadedBeatGridCount: beatGridResult.downloadedCount,
         };
         console.info('[sync] Sync completed', summary);
         if (summary.downloadedThemeCount > 0 && typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('folia-themes-synced'));
+        }
+        if (summary.downloadedBeatGridCount > 0 && typeof window !== 'undefined') {
+            // 节拍表到了 —— 让正在等拍点的那首歌重新读一次本地缓存。
+            window.dispatchEvent(new CustomEvent('folia-beat-grids-synced'));
         }
         return summary;
     } catch (error) {

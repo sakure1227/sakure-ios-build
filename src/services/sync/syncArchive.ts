@@ -32,6 +32,11 @@ export const createSyncLibraryZipBlob = (bundle: SyncLibraryExportBundle): Blob 
         files['settings/current.json'] = encodeJson(bundle.settings);
     }
 
+    // 节拍表跟着走：换设备时不必重新分析一遍（手机版本来就分析不了）。
+    if (bundle.beatGrids?.length) {
+        files['beats/beatGrids.json'] = encodeJson(bundle.beatGrids);
+    }
+
     const zipped = zipSync(files, { level: 6 });
     return new Blob([zipped], { type: 'application/zip' });
 };
@@ -49,6 +54,8 @@ export const readSyncLibraryZipFile = async (file: File): Promise<SyncLibraryExp
         exportedAt: meta.exportedAt,
         settings: files['settings/current.json'] ? parseZipJson(files, 'settings/current.json') : null,
         themes: parseZipJson(files, 'themes/themes.json'),
+        // 旧版本的包里没有这一份 —— 那就没有节拍表，不是错误。
+        beatGrids: files['beats/beatGrids.json'] ? parseZipJson(files, 'beats/beatGrids.json') : undefined,
     });
     if (!bundle) {
         throw new Error('Invalid Folia sync zip export');
