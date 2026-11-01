@@ -68,6 +68,28 @@ const config: CapacitorConfig = {
             resize: 'body',
             resizeOnFullScreen: true,
         },
+        // Capacitor **自带的** SystemBars 插件（不是下面那个第三方 status-bar）。
+        //
+        // 它是核心插件，Bridge 一建起来就注册了，**不管配没配都会跑**：
+        // `SystemBars.load()` 读 `plugins.SystemBars.hidden`，没配时默认 false，
+        // 于是它会调 `setHidden(false)` → `insetsController.show(systemBars())` ——
+        // **把系统栏放出来**。
+        //
+        // 那一句是 post 到主线程消息队列上的，所以它发生在 `onCreate()` 返回之后，
+        // 也就是发生在 `MainActivity.goImmersive()` 藏好系统栏**之后** ——
+        // 谁后到谁赢，系统栏就回来了。
+        //
+        // 这就是「有时全屏、有时顶上多一条」的那一半原因（另一半是挖孔 letterbox，
+        // 见 MainActivity 的注释）。写上 `hidden: true` 才是真的要藏。
+        //
+        // `insetsHandling: 'css'` 让它把安全区算成 `--safe-area-inset-*` 注入页面 ——
+        // 正好是 src/index.css 里 `--st-safe-*` 读的那几个变量（Android 的 WebView
+        // 不认 `env(safe-area-inset-*)`，只有这条注入才有值）。
+        SystemBars: {
+            hidden: true,
+            style: 'DARK',
+            insetsHandling: 'css',
+        },
         StatusBar: {
             // 沉浸式：内容铺到状态栏后面，状态栏自己隐藏。
             //
