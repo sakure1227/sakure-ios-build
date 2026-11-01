@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- 手机版是横屏的：宽度按设备走，高度不缩放（免得歌词那些布局被压扁）。
+         允许缩放（双指）：歌词与封面在小屏上要看清 —— 禁掉缩放就没法看了。
+         上限放到 5 倍（Android 自己的默认是 5）。 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover, user-scalable=yes" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="theme-color" content="#09090b" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Sakure</title>
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <link rel="apple-touch-icon" href="/icon.png" />
+    <style>html,body{overscroll-behavior:none;touch-action:pan-x pan-y pinch-zoom;background:#09090b;height:100%;margin:0;padding:0;overflow:auto}#root{height:100%}#app-boot{color:#71717a;pointer-events:none;background:#09090b;justify-content:center;align-items:center;font:14px/1.6 system-ui,sans-serif;transition:opacity .3s;display:flex;position:fixed;inset:0}#app-boot.is-gone{opacity:0}</style>
+    <script type="module" crossorigin src="/assets/main-Ddb9TY1T.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-C0FnF6B9.js">
+    <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-P2Xu9kJm.js">
+    <link rel="modulepreload" crossorigin href="/assets/lucide-icons-OCpBzVAd.js">
+    <link rel="modulepreload" crossorigin href="/assets/browser-BGOEbMMF.js">
+    <link rel="modulepreload" crossorigin href="/assets/workerClient-B2n2IM4H.js">
+    <link rel="modulepreload" crossorigin href="/assets/esm-DIAA5aiV.js">
+    <link rel="modulepreload" crossorigin href="/assets/config-zSesT6lv.js">
+    <link rel="modulepreload" crossorigin href="/assets/useStatusMessageStore-a4MUrPuL.js">
+    <link rel="modulepreload" crossorigin href="/assets/providerRegistry-C4GnaajP.js">
+    <link rel="modulepreload" crossorigin href="/assets/songMapping-B4MVfUmu.js">
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="app-boot">Sakure</div>
+  </body>
+</html>
